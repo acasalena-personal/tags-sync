@@ -55,26 +55,36 @@ FINDER_INFO_KEY = "com.apple.FinderInfo"
 FINDER_INFO_EMPTY = b'\x00' * 32
 
 
-def _clear_finder_color(filepath):
-    """Clear the legacy Finder color label from FinderInfo."""
+def _set_finder_color(filepath, color_id):
+    """Set or clear the legacy Finder color label in FinderInfo.
+
+    color_id: 0 to clear, or a COLOR_IDS value (1-7) to set.
+    The label is stored in bits 1-3 of byte 9 (value << 1).
+    """
     result = subprocess.run(
         ["xattr", "-px", FINDER_INFO_KEY, filepath],
         capture_output=True, text=True
     )
     if result.returncode != 0:
-        return
-    raw = bytes.fromhex(result.stdout.replace(" ", "").replace("\n", ""))
-    if len(raw) >= 10 and (raw[9] & 0x0E):
-        # Clear color bits (bits 1-3 of byte 9)
-        updated = bytearray(raw)
-        updated[9] &= ~0x0E
-        if bytes(updated) == FINDER_INFO_EMPTY:
-            subprocess.run(["xattr", "-d", FINDER_INFO_KEY, filepath], capture_output=True)
-        else:
-            subprocess.run(
-                ["xattr", "-wx", FINDER_INFO_KEY, bytes(updated).hex(), filepath],
-                capture_output=True, text=True
-            )
+        if color_id == 0:
+            return  # nothing to clear
+        # No FinderInfo yet — create a fresh 32-byte block
+        raw = bytearray(32)
+    else:
+        raw = bytearray(bytes.fromhex(result.stdout.replace(" ", "").replace("\n", "")))
+    if len(raw) < 10:
+        raw.extend(b'\x00' * (10 - len(raw)))
+
+    # Clear old color bits, then set new ones
+    raw[9] = (raw[9] & ~0x0E) | ((color_id & 0x07) << 1)
+
+    if bytes(raw) == FINDER_INFO_EMPTY:
+        subprocess.run(["xattr", "-d", FINDER_INFO_KEY, filepath], capture_output=True)
+    else:
+        subprocess.run(
+            ["xattr", "-wx", FINDER_INFO_KEY, bytes(raw).hex(), filepath],
+            capture_output=True, text=True
+        )
 
 
 def remove_all_tags(filepath):
@@ -83,7 +93,7 @@ def remove_all_tags(filepath):
         ["xattr", "-d", XATTR_KEY, filepath],
         capture_output=True, text=True
     )
-    _clear_finder_color(filepath)
+    _set_finder_color(filepath, 0)
 
 
 def set_tags(filepath, tags):
@@ -101,7 +111,9 @@ def set_tags(filepath, tags):
         ["xattr", "-wx", XATTR_KEY, hex_data, filepath],
         capture_output=True, text=True
     )
-    _clear_finder_color(filepath)
+    # Set FinderInfo color label to the first tag's color (for Finder dot display)
+    first_color = COLOR_IDS.get(tags[0], 0) if tags else 0
+    _set_finder_color(filepath, first_color)
 
 
 # Preferred tag order: Yellow, Green always come first (in that order).
