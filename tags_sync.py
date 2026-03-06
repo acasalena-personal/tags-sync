@@ -8,6 +8,27 @@ import random
 import subprocess
 import sys
 
+# ANSI colors
+_RST = "\033[0m"
+_DIM = "\033[2m"
+_BOLD = "\033[1m"
+_RED = "\033[31m"
+_GREEN = "\033[32m"
+_YELLOW = "\033[33m"
+_BLUE = "\033[34m"
+_MAGENTA = "\033[35m"
+_CYAN = "\033[36m"
+
+# Status prefixes with icons
+_SKIP = f"{_DIM}  {'--':<9}{_RST}"
+_SET = f"{_GREEN}  {'SET':<9}{_RST}"
+_CLEAR = f"{_YELLOW}  {'CLEAR':<9}{_RST}"
+_REORDER = f"{_CYAN}  {'REORDER':<9}{_RST}"
+_SCRAMBLE = f"{_MAGENTA}  {'SCRAMBLE':<9}{_RST}"
+_MISSING = f"{_YELLOW}  {'MISSING':<9}{_RST}"
+_EXTRA = f"{_YELLOW}  {'EXTRA':<9}{_RST}"
+_ERROR = f"{_RED}  {'ERROR':<9}{_RST}"
+
 XATTR_KEY = "com.apple.metadata:_kMDItemUserTags"
 
 # Color tag name -> Finder color index
@@ -115,7 +136,7 @@ def fix_order(directory):
     """Reorder tags on every file to match preferred order. Returns exit code."""
     directory = os.path.abspath(directory)
     if not os.path.isdir(directory):
-        print(f"ERROR: not a directory: {directory}")
+        print(f"{_ERROR}not a directory: {directory}")
         return 1
 
     files = collect_files(directory)
@@ -128,24 +149,24 @@ def fix_order(directory):
         try:
             tags = get_tags(filepath)
             if not tags:
-                print(f"SKIP     {rel}  (no tags)")
+                print(f"{_SKIP}{rel}  {_DIM}(no tags){_RST}")
                 skipped += 1
                 continue
             ordered = sort_tags(tags)
             if tags == ordered:
-                print(f"SKIP     {rel}  [{', '.join(tags)}]")
+                print(f"{_SKIP}{rel}  {_DIM}[{', '.join(tags)}]{_RST}")
                 skipped += 1
             else:
                 remove_all_tags(filepath)
                 set_tags(filepath, ordered)
-                print(f"REORDER  {rel}  [{', '.join(tags)}] -> [{', '.join(ordered)}]")
+                print(f"{_REORDER}{rel}  [{', '.join(tags)}] -> [{', '.join(ordered)}]")
                 fixed += 1
         except Exception as e:
-            print(f"ERROR    {rel}  {e}")
+            print(f"{_ERROR}{rel}  {e}")
             errors += 1
 
     total = fixed + skipped + errors
-    print(f"\n{total} files: {fixed} reordered, {skipped} skipped, {errors} errors")
+    print(f"\n{_BOLD}{total} files:{_RST} {_CYAN}{fixed} reordered{_RST}, {_DIM}{skipped} skipped{_RST}, {_RED}{errors} errors{_RST}")
     return 1 if errors else 0
 
 
@@ -153,7 +174,7 @@ def reset(directory):
     """Remove all tags from every file in a directory. Returns exit code."""
     directory = os.path.abspath(directory)
     if not os.path.isdir(directory):
-        print(f"ERROR: not a directory: {directory}")
+        print(f"{_ERROR}not a directory: {directory}")
         return 1
 
     files = collect_files(directory)
@@ -166,18 +187,18 @@ def reset(directory):
         try:
             tags = get_tags(filepath)
             if not tags:
-                print(f"SKIP     {rel}")
+                print(f"{_SKIP}{rel}")
                 skipped += 1
             else:
                 remove_all_tags(filepath)
-                print(f"CLEAR    {rel}  [{', '.join(tags)}]")
+                print(f"{_CLEAR}{rel}  [{', '.join(tags)}]")
                 cleared += 1
         except Exception as e:
-            print(f"ERROR    {rel}  {e}")
+            print(f"{_ERROR}{rel}  {e}")
             errors += 1
 
     total = cleared + skipped + errors
-    print(f"\n{total} files: {cleared} cleared, {skipped} skipped, {errors} errors")
+    print(f"\n{_BOLD}{total} files:{_RST} {_YELLOW}{cleared} cleared{_RST}, {_DIM}{skipped} skipped{_RST}, {_RED}{errors} errors{_RST}")
     return 1 if errors else 0
 
 
@@ -187,10 +208,10 @@ def sync(source_dir, dest_dir):
     dest_dir = os.path.abspath(dest_dir)
 
     if not os.path.isdir(source_dir):
-        print(f"ERROR: source is not a directory: {source_dir}")
+        print(f"{_ERROR}source is not a directory: {source_dir}")
         return 1
     if not os.path.isdir(dest_dir):
-        print(f"ERROR: destination is not a directory: {dest_dir}")
+        print(f"{_ERROR}destination is not a directory: {dest_dir}")
         return 1
 
     files = collect_files(source_dir)
@@ -205,7 +226,7 @@ def sync(source_dir, dest_dir):
         dst_path = os.path.join(dest_dir, rel)
 
         if not os.path.exists(dst_path):
-            print(f"MISSING  {rel}")
+            print(f"{_MISSING}{rel}")
             missing += 1
             continue
 
@@ -217,36 +238,36 @@ def sync(source_dir, dest_dir):
             remove_all_tags(dst_path)
 
             if not src_tags and not dst_tags:
-                print(f"SKIP     {rel}")
+                print(f"{_SKIP}{rel}")
                 skipped += 1
             elif not src_tags and dst_tags:
-                print(f"CLEAR    {rel}  [{', '.join(dst_tags)}] -> []")
+                print(f"{_CLEAR}{rel}  [{', '.join(dst_tags)}] -> []")
                 cleared += 1
             elif src_tags == dst_tags:
                 set_tags(dst_path, src_tags)
-                print(f"SKIP     {rel}  [{', '.join(src_tags)}]")
+                print(f"{_SKIP}{rel}  {_DIM}[{', '.join(src_tags)}]{_RST}")
                 skipped += 1
             else:
                 set_tags(dst_path, src_tags)
                 old = ', '.join(dst_tags) if dst_tags else ''
                 new = ', '.join(src_tags)
-                print(f"SET      {rel}  [{old}] -> [{new}]")
+                print(f"{_SET}{rel}  [{old}] -> [{new}]")
                 updated += 1
         except Exception as e:
-            print(f"ERROR    {rel}  {e}")
+            print(f"{_ERROR}{rel}  {e}")
             errors += 1
 
     total = skipped + updated + cleared + missing + errors
-    print(f"\n{total} files: {updated} set, {cleared} cleared, {skipped} skipped, {missing} missing, {errors} errors")
+    print(f"\n{_BOLD}{total} files:{_RST} {_GREEN}{updated} set{_RST}, {_YELLOW}{cleared} cleared{_RST}, {_DIM}{skipped} skipped{_RST}, {_YELLOW}{missing} missing{_RST}, {_RED}{errors} errors{_RST}")
 
     # Warn about files in dest that don't exist in source
     dest_files = set(collect_files(dest_dir))
     src_files = set(files)
     extra = sorted(dest_files - src_files)
     if extra:
-        print(f"\nWARNING: {len(extra)} files in dest not in source:")
+        print(f"\n{_YELLOW}{_BOLD}WARNING:{_RST} {len(extra)} files in dest not in source:")
         for rel in extra:
-            print(f"  EXTRA  {rel}")
+            print(f"{_EXTRA}{rel}")
 
     return 1 if errors else 0
 
@@ -255,7 +276,7 @@ def scramble(directory):
     """Randomly shuffle tag order on every tagged file. Returns exit code."""
     directory = os.path.abspath(directory)
     if not os.path.isdir(directory):
-        print(f"ERROR: not a directory: {directory}")
+        print(f"{_ERROR}not a directory: {directory}")
         return 1
 
     files = collect_files(directory)
@@ -268,7 +289,7 @@ def scramble(directory):
         try:
             tags = get_tags(filepath)
             if len(tags) < 2:
-                print(f"SKIP     {rel}  {tags if tags else '(no tags)'}")
+                print(f"{_SKIP}{rel}  {_DIM}{tags if tags else '(no tags)'}{_RST}")
                 skipped += 1
                 continue
             shuffled = tags[:]
@@ -276,14 +297,14 @@ def scramble(directory):
                 random.shuffle(shuffled)
             remove_all_tags(filepath)
             set_tags(filepath, shuffled)
-            print(f"SCRAMBLE {rel}  [{', '.join(tags)}] -> [{', '.join(shuffled)}]")
+            print(f"{_SCRAMBLE}{rel}  [{', '.join(tags)}] -> [{', '.join(shuffled)}]")
             scrambled += 1
         except Exception as e:
-            print(f"ERROR    {rel}  {e}")
+            print(f"{_ERROR}{rel}  {e}")
             errors += 1
 
     total = scrambled + skipped + errors
-    print(f"\n{total} files: {scrambled} scrambled, {skipped} skipped, {errors} errors")
+    print(f"\n{_BOLD}{total} files:{_RST} {_MAGENTA}{scrambled} scrambled{_RST}, {_DIM}{skipped} skipped{_RST}, {_RED}{errors} errors{_RST}")
     return 1 if errors else 0
 
 
@@ -302,12 +323,12 @@ def main():
         sys.exit(fix_order(args.source))
     elif args.sync_dest:
         if not args.dest:
-            print("ERROR: --sync-dest requires a dest directory")
+            print(f"{_ERROR}--sync-dest requires a dest directory")
             sys.exit(1)
         sys.exit(sync(args.source, args.dest))
     else:
         if not args.dest:
-            print("ERROR: dest directory is required for sync")
+            print(f"{_ERROR}dest directory is required for sync")
             sys.exit(1)
         sys.exit(sync(args.source, args.dest))
 
