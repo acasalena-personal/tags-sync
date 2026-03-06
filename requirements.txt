@@ -1,0 +1,2 @@
+# No third-party dependencies — stdlib only.
+# The external `tag` CLI (brew install tag) is required at runtime.
