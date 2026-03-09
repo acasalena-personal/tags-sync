@@ -13,10 +13,10 @@ from common import *
 _SKIP = f"{DIM}  {'--':<9}{RST}"
 _DIFF = f"{RED}  {'DIFF':<9}{RST}"
 _MATCH = f"{GREEN}  {'MATCH':<9}{RST}"
-_MISSING = f"{YELLOW}  {'MISSING':<9}{RST}"
-_EXTRA = f"{YELLOW}  {'EXTRA':<9}{RST}"
+_MISSING = MISSING
+_EXTRA = EXTRA
 _RENAME = f"{CYAN}  {'RENAME':<9}{RST}"
-_ERROR = f"{RED}  {'ERROR':<9}{RST}"
+_ERROR = ERROR
 
 
 def collect_files(directory):
@@ -73,11 +73,7 @@ def compare(source_dir, dest_dir, type_check):
     source_dir = os.path.abspath(source_dir)
     dest_dir = os.path.abspath(dest_dir)
 
-    if not os.path.isdir(source_dir):
-        print(f"{_ERROR}source is not a directory: {source_dir}")
-        return 1
-    if not os.path.isdir(dest_dir):
-        print(f"{_ERROR}destination is not a directory: {dest_dir}")
+    if not check_dirs(source_dir, dest_dir):
         return 1
 
     src_files = collect_files(source_dir)

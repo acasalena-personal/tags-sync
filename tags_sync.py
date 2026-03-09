@@ -16,9 +16,9 @@ _SET = f"{GREEN}  {'SET':<9}{RST}"
 _CLEAR = f"{YELLOW}  {'CLEAR':<9}{RST}"
 _REORDER = f"{CYAN}  {'REORDER':<9}{RST}"
 _SCRAMBLE = f"{MAGENTA}  {'SCRAMBLE':<9}{RST}"
-_MISSING = f"{YELLOW}  {'MISSING':<9}{RST}"
-_EXTRA = f"{YELLOW}  {'EXTRA':<9}{RST}"
-_ERROR = f"{RED}  {'ERROR':<9}{RST}"
+_MISSING = MISSING
+_EXTRA = EXTRA
+_ERROR = ERROR
 
 XATTR_KEY = "com.apple.metadata:_kMDItemUserTags"
 
@@ -138,8 +138,7 @@ def collect_files(directory):
 def fix_order(directory):
     """Reorder tags on every file to match preferred order. Returns exit code."""
     directory = os.path.abspath(directory)
-    if not os.path.isdir(directory):
-        print(f"{_ERROR}not a directory: {directory}")
+    if not check_dirs(directory):
         return 1
 
     files = collect_files(directory)
@@ -176,8 +175,7 @@ def fix_order(directory):
 def reset(directory):
     """Remove all tags from every file in a directory. Returns exit code."""
     directory = os.path.abspath(directory)
-    if not os.path.isdir(directory):
-        print(f"{_ERROR}not a directory: {directory}")
+    if not check_dirs(directory):
         return 1
 
     files = collect_files(directory)
@@ -210,11 +208,7 @@ def sync(source_dir, dest_dir):
     source_dir = os.path.abspath(source_dir)
     dest_dir = os.path.abspath(dest_dir)
 
-    if not os.path.isdir(source_dir):
-        print(f"{_ERROR}source is not a directory: {source_dir}")
-        return 1
-    if not os.path.isdir(dest_dir):
-        print(f"{_ERROR}destination is not a directory: {dest_dir}")
+    if not check_dirs(source_dir, dest_dir):
         return 1
 
     files = collect_files(source_dir)
@@ -263,14 +257,7 @@ def sync(source_dir, dest_dir):
     total = skipped + updated + cleared + missing + errors
     print(f"\n{BOLD}{total} files:{RST} {GREEN}{updated} set{RST}, {YELLOW}{cleared} cleared{RST}, {DIM}{skipped} skipped{RST}, {YELLOW}{missing} missing{RST}, {RED}{errors} errors{RST}")
 
-    # Warn about files in dest that don't exist in source
-    dest_files = set(collect_files(dest_dir))
-    src_files = set(files)
-    extra = sorted(dest_files - src_files)
-    if extra:
-        print(f"\n{YELLOW}{BOLD}WARNING:{RST} {len(extra)} files in dest not in source:")
-        for rel in extra:
-            print(f"{_EXTRA}{rel}")
+    warn_extra(files, dest_dir, collect_files)
 
     return 1 if errors else 0
 
@@ -278,8 +265,7 @@ def sync(source_dir, dest_dir):
 def scramble(directory):
     """Randomly shuffle tag order on every tagged file. Returns exit code."""
     directory = os.path.abspath(directory)
-    if not os.path.isdir(directory):
-        print(f"{_ERROR}not a directory: {directory}")
+    if not check_dirs(directory):
         return 1
 
     files = collect_files(directory)
