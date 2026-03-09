@@ -214,9 +214,12 @@ def compare(source_dir, dest_dir, type_check):
     return 1 if (errors or differed) else 0
 
 
-def choose_folder(prompt):
+def choose_folder(prompt, default_location=None):
     """Open a macOS folder chooser dialog and return the selected path."""
-    script = f'POSIX path of (choose folder with prompt "{prompt}")'
+    if default_location:
+        script = f'POSIX path of (choose folder with prompt "{prompt}" default location POSIX file "{default_location}")'
+    else:
+        script = f'POSIX path of (choose folder with prompt "{prompt}")'
     try:
         result = subprocess.run(
             ["osascript", "-e", script],
@@ -226,6 +229,68 @@ def choose_folder(prompt):
     except subprocess.CalledProcessError:
         print(f"{_ERROR}No folder selected. Exiting.")
         sys.exit(1)
+
+
+def guess_dest(source_path):
+    """Given a source on a mounted volume, look for a matching path on other volumes."""
+    volumes_root = "/Volumes"
+    abs_source = os.path.abspath(source_path)
+
+    # Only works if source is under /Volumes
+    if not abs_source.startswith(volumes_root + "/"):
+        return None
+
+    # Extract the volume name and the relative path within it
+    parts = abs_source[len(volumes_root) + 1:].split("/", 1)
+    if len(parts) < 2:
+        return None
+    source_volume = parts[0]
+    rel_path = parts[1]  # e.g. "Music/Artist/Album"
+
+    # Build candidate sub-paths from most specific to least: Album, Artist/Album, Music/Artist/Album
+    segments = rel_path.split("/")
+    candidates = []
+    for depth in range(len(segments), 0, -1):
+        candidates.append(os.path.join(*segments[-depth:]))
+
+    # Check other mounted volumes
+    try:
+        volumes = [v for v in os.listdir(volumes_root)
+                   if v != source_volume and os.path.isdir(os.path.join(volumes_root, v))]
+    except OSError:
+        return None
+
+    print(f"{_DIM}  Looking for destination match on {len(volumes)} other volume(s): {', '.join(volumes)}{_RST}")
+
+    # Try most specific match first (full relative path), then progressively shorter
+    for candidate in candidates:
+        for vol in volumes:
+            test = os.path.join(volumes_root, vol, candidate)
+            print(f"{_DIM}    Checking exact path: {test}{_RST}", end="")
+            if os.path.isdir(test):
+                print(f"  {_GREEN}found{_RST}")
+                return test
+            print()
+
+    # No match found — try scanning a few levels deep on other volumes
+    target = segments[-1].lower()
+    print(f"{_DIM}  No exact match. Scanning volumes for \"{segments[-1]}\" (up to 3 levels deep)...{_RST}")
+    for vol in volumes:
+        vol_root = os.path.join(volumes_root, vol)
+        print(f"{_DIM}    Scanning {vol_root}/{_RST}")
+        for root, dirs, _ in os.walk(vol_root):
+            depth = root[len(vol_root):].count("/")
+            if depth >= 3:
+                dirs.clear()
+                continue
+            for d in dirs:
+                if d.lower() == target:
+                    match = os.path.join(root, d)
+                    print(f"{_DIM}      {_GREEN}found{_RST}{_DIM}: {match}{_RST}")
+                    return match
+
+    print(f"{_DIM}  No matching destination found.{_RST}")
+    return None
 
 
 def main():
@@ -244,7 +309,14 @@ def main():
     args = parser.parse_args()
 
     source = args.source or choose_folder("Select SOURCE directory")
-    dest = args.dest or choose_folder("Select DESTINATION directory")
+
+    default_dest = None
+    if not args.dest:
+        default_dest = guess_dest(source)
+        if default_dest:
+            print(f"{_DIM}  Guessed destination: {default_dest}{_RST}")
+
+    dest = args.dest or choose_folder("Select DESTINATION directory", default_dest)
 
     sys.exit(compare(source, dest, args.type_check))
 
