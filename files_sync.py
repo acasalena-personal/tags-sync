@@ -22,6 +22,7 @@ _DIFF = f"{_RED}  {'DIFF':<9}{_RST}"
 _MATCH = f"{_GREEN}  {'MATCH':<9}{_RST}"
 _MISSING = f"{_YELLOW}  {'MISSING':<9}{_RST}"
 _EXTRA = f"{_YELLOW}  {'EXTRA':<9}{_RST}"
+_RENAME = f"{_CYAN}  {'RENAME':<9}{_RST}"
 _ERROR = f"{_RED}  {'ERROR':<9}{_RST}"
 
 
@@ -150,11 +151,63 @@ def compare(source_dir, dest_dir, type_check):
         f"\n{_BOLD}{total} files:{_RST} {_GREEN}{matched} matched{_RST}, {_RED}{differed} different{_RST}, {_YELLOW}{missing} missing{_RST}, {_RED}{errors} errors{_RST}"
     )
 
-    if extra:
-        print(
-            f"\n{_YELLOW}{_BOLD}WARNING:{_RST} {extra_count} files in dest not in source:"
-        )
+    # Detect renames by matching src-only vs dest-only files by content
+    src_only = sorted(rel for rel in src_files if not os.path.exists(os.path.join(dest_dir, rel)))
+    renames = []
+    matched_src = set()
+    matched_dst = set()
+
+    if src_only and extra:
+        def fingerprint(filepath):
+            try:
+                if type_check == "HASH":
+                    return file_hash(filepath)
+                else:
+                    return (file_mtime(filepath), os.path.getsize(filepath))
+            except Exception:
+                return None
+
+        dst_fp = {}
         for rel in extra:
+            fp = fingerprint(os.path.join(dest_dir, rel))
+            if fp is not None:
+                dst_fp.setdefault(fp, []).append(rel)
+
+        for rel in src_only:
+            fp = fingerprint(os.path.join(source_dir, rel))
+            if fp is not None and fp in dst_fp:
+                candidates = dst_fp[fp]
+                for dst_rel in candidates:
+                    if dst_rel not in matched_dst:
+                        renames.append((rel, dst_rel, fp))
+                        matched_src.add(rel)
+                        matched_dst.add(dst_rel)
+                        break
+
+    if renames:
+        print(f"\n{_CYAN}{_BOLD}RENAMES:{_RST} {len(renames)} probable renames detected:")
+        for src_rel, dst_rel, fp in renames:
+            if type_check == "HASH":
+                reason = f"same hash {fp[:12]}..."
+            else:
+                reason = f"same date {fmt_date(fp[0])} & size {fmt_size(fp[1])}"
+            print(f"{_RENAME}{src_rel}  ->  {dst_rel}  {_DIM}({reason}){_RST}")
+
+    remaining_src = sorted(r for r in src_only if r not in matched_src)
+    remaining_dst = sorted(r for r in extra if r not in matched_dst)
+
+    if remaining_src:
+        print(
+            f"\n{_YELLOW}{_BOLD}WARNING:{_RST} {len(remaining_src)} files in source not in dest:"
+        )
+        for rel in remaining_src:
+            print(f"{_MISSING}{rel}")
+
+    if remaining_dst:
+        print(
+            f"\n{_YELLOW}{_BOLD}WARNING:{_RST} {len(remaining_dst)} files in dest not in source:"
+        )
+        for rel in remaining_dst:
             print(f"{_EXTRA}{rel}")
 
     return 1 if (errors or differed) else 0
