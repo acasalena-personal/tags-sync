@@ -57,14 +57,32 @@ def guess_dest(source_path):
     for depth in range(len(segments), 0, -1):
         candidates.append(os.path.join(*segments[-depth:]))
 
-    # Check other mounted volumes
+    # Skip markers for volumes that aren't useful targets
+    _SKIP_MARKERS = (".com.apple.timemachine.donotpresent", ".Spotlight-V100")
+
+    # Check other mounted volumes, filtering out system/TM volumes
     try:
-        volumes = [v for v in os.listdir(volumes_root)
-                   if v != source_volume and os.path.isdir(os.path.join(volumes_root, v))]
+        all_volumes = [v for v in os.listdir(volumes_root)
+                       if v != source_volume and os.path.isdir(os.path.join(volumes_root, v))]
     except OSError:
         return None
 
-    print(f"{DIM}  Looking for destination match on {len(volumes)} other volume(s): {', '.join(volumes)}{RST}")
+    volumes = []
+    skipped = []
+    for v in all_volumes:
+        vol_path = os.path.join(volumes_root, v)
+        if any(os.path.exists(os.path.join(vol_path, m)) for m in _SKIP_MARKERS):
+            skipped.append(v)
+        else:
+            volumes.append(v)
+
+    if skipped:
+        print(f"{DIM}  Skipping volume(s): {', '.join(skipped)}{RST}")
+    if not volumes:
+        print(f"{DIM}  No candidate volumes found.{RST}")
+        return None
+
+    print(f"{DIM}  Looking for destination match on {len(volumes)} volume(s): {', '.join(volumes)}{RST}")
 
     # Try most specific match first (full relative path), then progressively shorter
     for candidate in candidates:
@@ -76,22 +94,29 @@ def guess_dest(source_path):
                 return test
             print()
 
-    # No match found — try scanning a few levels deep on other volumes
+    # No match found — scan a few levels deep using scandir for speed
     target = segments[-1].lower()
     print(f"{DIM}  No exact match. Scanning volumes for \"{segments[-1]}\" (up to 3 levels deep)...{RST}")
+
+    def _scan_dirs(path, max_depth, depth=0):
+        """Recursively scan directories using scandir, yielding (name, full_path)."""
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    if entry.is_dir(follow_symlinks=False):
+                        yield entry.name, entry.path
+                        if depth < max_depth - 1:
+                            yield from _scan_dirs(entry.path, max_depth, depth + 1)
+        except PermissionError:
+            pass
+
     for vol in volumes:
         vol_root = os.path.join(volumes_root, vol)
         print(f"{DIM}    Scanning {vol_root}/{RST}")
-        for root, dirs, _ in os.walk(vol_root):
-            depth = root[len(vol_root):].count("/")
-            if depth >= 3:
-                dirs.clear()
-                continue
-            for d in dirs:
-                if d.lower() == target:
-                    match = os.path.join(root, d)
-                    print(f"{DIM}      {GREEN}found{RST}{DIM}: {match}{RST}")
-                    return match
+        for name, full_path in _scan_dirs(vol_root, 3):
+            if name.lower() == target:
+                print(f"{DIM}      {GREEN}found{RST}{DIM}: {full_path}{RST}")
+                return full_path
 
     print(f"{DIM}  No matching destination found.{RST}")
     return None
