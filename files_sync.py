@@ -93,9 +93,13 @@ def copy_file_with_progress(src, dst, rel):
                 bar = f"[{'#' * filled}{'.' * (bar_width - filled)}]"
                 print(f"\r{_COPY}{rel}  {bar} {pct:5.1%} of {total_str}", end="", flush=True)
 
-    # Explicitly set timestamps to match source
+    # Set timestamps to match source — open by fd to bypass any caching
     st = os.stat(src)
-    os.utime(dst, (st.st_atime, st.st_mtime))
+    fd = os.open(dst, os.O_RDONLY)
+    try:
+        os.utime(fd, (st.st_atime, st.st_mtime))
+    finally:
+        os.close(fd)
 
     print(f"\r{_COPY}{rel}  {'[' + '#' * bar_width + ']'} 100.0% of {total_str}")
 

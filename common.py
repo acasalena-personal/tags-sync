@@ -115,6 +115,13 @@ def guess_dest(source_path):
 
     print(f"{DIM}  Looking for destination match on {len(volumes)} volume(s): {', '.join(volumes)}{RST}")
 
+    # Build candidate paths: include source volume name prefix for backup drives
+    # e.g. source /Volumes/Media/Test → also try <vol>/**/Media/Test
+    if source_volume:
+        vol_prefixed = os.path.join(source_volume, rel_path)  # "Media/Test"
+        if vol_prefixed not in candidates:
+            candidates.insert(0, vol_prefixed)
+
     # Try most specific match first (full relative path), then progressively shorter
     for candidate in candidates:
         for vol in volumes:
@@ -129,9 +136,30 @@ def guess_dest(source_path):
             else:
                 print()
 
-    # No match found — scan a few levels deep using scandir for speed
+    # Scan a few levels deep, looking for the source volume name as a parent of rel_path
+    # This catches backup paths like /Volumes/Media-1/<anything>/Media/Test
+    if source_volume:
+        vol_suffix = os.path.join(source_volume, rel_path)  # "Media/Test"
+        print(f"{DIM}  Scanning for */{vol_suffix} (up to 4 levels deep)...{RST}")
+        for vol in volumes:
+            vol_root = os.path.join(volumes_root, vol)
+            try:
+                with os.scandir(vol_root) as it:
+                    for entry in it:
+                        if entry.is_dir(follow_symlinks=False):
+                            test = os.path.join(entry.path, vol_suffix)
+                            if os.path.isdir(test):
+                                if _is_source(test):
+                                    print(f"{DIM}    {YELLOW}skipped (source){RST}{DIM}: {test}{RST}")
+                                else:
+                                    print(f"{DIM}    {GREEN}found{RST}{DIM}: {test}{RST}")
+                                    return test
+            except (PermissionError, OSError):
+                pass
+
+    # Last resort — scan a few levels deep using scandir for speed
     target = segments[-1].lower()
-    print(f"{DIM}  No exact match. Scanning volumes for \"{segments[-1]}\" (up to 4 levels deep)...{RST}")
+    print(f"{DIM}  Scanning volumes for \"{segments[-1]}\" (up to 4 levels deep)...{RST}")
 
     def _scan_dirs(path, max_depth, depth=0):
         """Recursively scan directories using scandir, yielding (name, full_path)."""
