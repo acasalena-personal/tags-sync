@@ -5,6 +5,7 @@ import argparse
 from datetime import datetime
 import hashlib
 import os
+import shutil
 import sys
 
 from common import *
@@ -16,6 +17,8 @@ _MATCH = f"{GREEN}  {'MATCH':<9}{RST}"
 _MISSING = MISSING
 _EXTRA = EXTRA
 _RENAME = f"{CYAN}  {'RENAME':<9}{RST}"
+_COPY = f"{GREEN}  {'COPY':<9}{RST}"
+_COPY_ERR = f"{RED}  {'COPY ERR':<9}{RST}"
 _ERROR = ERROR
 
 
@@ -68,6 +71,62 @@ def fmt_date(ts):
     return f"{month} {day}, {year} at {time}"
 
 
+def copy_file_with_progress(src, dst, rel):
+    """Copy a single file from src to dst with a console progress bar."""
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    size = os.path.getsize(src)
+    copied = 0
+    chunk = 1024 * 1024  # 1 MB
+    bar_width = 30
+    total_str = fmt_size(size)
+
+    with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+        while True:
+            buf = fsrc.read(chunk)
+            if not buf:
+                break
+            fdst.write(buf)
+            copied += len(buf)
+            if size > 0:
+                pct = copied / size
+                filled = int(bar_width * pct)
+                bar = f"[{'#' * filled}{'.' * (bar_width - filled)}]"
+                print(f"\r{_COPY}{rel}  {bar} {pct:5.1%} of {total_str}", end="", flush=True)
+
+    # Copy metadata (timestamps, permissions)
+    shutil.copystat(src, dst)
+
+    print(f"\r{_COPY}{rel}  {'[' + '#' * bar_width + ']'} 100.0% of {total_str}")
+
+
+def copy_missing_files(missing_files, source_dir, dest_dir):
+    """Prompt user and copy missing files from source to dest with progress. Returns (copied, errors)."""
+    if not missing_files:
+        return 0, 0
+
+    print(f"\n{YELLOW}{BOLD}{len(missing_files)} file(s) missing from destination.{RST}")
+    answer = input("Copy missing files from source to destination? [y/N] ").strip().lower()
+    if answer != "y":
+        print(f"{DIM}  Skipping copy.{RST}")
+        return 0, 0
+
+    print()
+    copied = 0
+    errs = 0
+    for rel in missing_files:
+        src_path = os.path.join(source_dir, rel)
+        dst_path = os.path.join(dest_dir, rel)
+        try:
+            copy_file_with_progress(src_path, dst_path, rel)
+            copied += 1
+        except Exception as e:
+            print(f"\r{_COPY_ERR}{rel}  {e}")
+            errs += 1
+
+    print(f"\n{BOLD}{copied + errs} file(s):{RST} {GREEN}{copied} copied{RST}, {RED}{errs} errors{RST}")
+    return copied, errs
+
+
 def compare(source_dir, dest_dir, type_check):
     """Compare files between source and dest. Returns exit code."""
     source_dir = os.path.abspath(source_dir)
@@ -80,6 +139,7 @@ def compare(source_dir, dest_dir, type_check):
     matched = 0
     differed = 0
     missing = 0
+    missing_files = []
     errors = 0
 
     for rel in src_files:
@@ -89,6 +149,7 @@ def compare(source_dir, dest_dir, type_check):
         if not os.path.exists(dst_path):
             print(f"{_MISSING}{rel}")
             missing += 1
+            missing_files.append(rel)
             continue
 
         try:
@@ -185,19 +246,18 @@ def compare(source_dir, dest_dir, type_check):
     remaining_src = sorted(r for r in src_only if r not in matched_src)
     remaining_dst = sorted(r for r in extra if r not in matched_dst)
 
-    if remaining_src:
-        print(
-            f"\n{YELLOW}{BOLD}WARNING:{RST} {len(remaining_src)} files in source not in dest:"
-        )
-        for rel in remaining_src:
-            print(f"{_MISSING}{rel}")
-
     if remaining_dst:
         print(
             f"\n{YELLOW}{BOLD}WARNING:{RST} {len(remaining_dst)} files in dest not in source:"
         )
         for rel in remaining_dst:
             print(f"{_EXTRA}{rel}")
+
+    # Offer to copy missing files (excluding probable renames) from source to dest
+    copy_candidates = [r for r in missing_files if r not in matched_src]
+    _copied, copy_errors = copy_missing_files(copy_candidates, source_dir, dest_dir)
+    if copy_errors:
+        errors += copy_errors
 
     return 1 if (errors or differed) else 0
 
