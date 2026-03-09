@@ -168,6 +168,7 @@ def main():
     parser.add_argument("dest", help="Destination directory")
     parser.add_argument(
         "--type-check",
+        type=str.upper,
         choices=["HASH", "DATESIZE"],
         default="DATESIZE",
         help="Comparison method: HASH (SHA-256) or DATESIZE (date + file size)",
