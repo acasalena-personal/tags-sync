@@ -193,4 +193,8 @@ def prompt_dirs(source=None, dest=None, source_prompt="Select SOURCE directory",
             print(f"{DIM}  Guessed destination: {default_dest}{RST}")
 
     dest = dest or choose_folder(dest_prompt, default_dest)
+
+    print(f"\n{BOLD}Source:{RST}      {source}")
+    print(f"{BOLD}Destination:{RST} {dest}\n")
+
     return source, dest
