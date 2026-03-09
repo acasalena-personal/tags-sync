@@ -93,8 +93,9 @@ def copy_file_with_progress(src, dst, rel):
                 bar = f"[{'#' * filled}{'.' * (bar_width - filled)}]"
                 print(f"\r{_COPY}{rel}  {bar} {pct:5.1%} of {total_str}", end="", flush=True)
 
-    # Copy metadata (timestamps, permissions)
-    shutil.copystat(src, dst)
+    # Explicitly set timestamps to match source
+    st = os.stat(src)
+    os.utime(dst, (st.st_atime, st.st_mtime))
 
     print(f"\r{_COPY}{rel}  {'[' + '#' * bar_width + ']'} 100.0% of {total_str}")
 
@@ -148,6 +149,15 @@ def compare(source_dir, dest_dir, type_check):
 
         if not os.path.exists(dst_path):
             print(f"{_MISSING}{rel}")
+            missing += 1
+            missing_files.append(rel)
+            continue
+
+        # Dest smaller than src → treat as incomplete/truncated, flag for replacement
+        src_sz = os.path.getsize(src_path)
+        dst_sz = os.path.getsize(dst_path)
+        if dst_sz < src_sz:
+            print(f"{_MISSING}{rel}  {DIM}(dest smaller: {fmt_size(dst_sz)} < {fmt_size(src_sz)}){RST}")
             missing += 1
             missing_files.append(rel)
             continue
