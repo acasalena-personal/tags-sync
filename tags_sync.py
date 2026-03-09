@@ -8,26 +8,17 @@ import random
 import subprocess
 import sys
 
-# ANSI colors
-_RST = "\033[0m"
-_DIM = "\033[2m"
-_BOLD = "\033[1m"
-_RED = "\033[31m"
-_GREEN = "\033[32m"
-_YELLOW = "\033[33m"
-_BLUE = "\033[34m"
-_MAGENTA = "\033[35m"
-_CYAN = "\033[36m"
+from common import *
 
 # Status prefixes with icons
-_SKIP = f"{_DIM}  {'--':<9}{_RST}"
-_SET = f"{_GREEN}  {'SET':<9}{_RST}"
-_CLEAR = f"{_YELLOW}  {'CLEAR':<9}{_RST}"
-_REORDER = f"{_CYAN}  {'REORDER':<9}{_RST}"
-_SCRAMBLE = f"{_MAGENTA}  {'SCRAMBLE':<9}{_RST}"
-_MISSING = f"{_YELLOW}  {'MISSING':<9}{_RST}"
-_EXTRA = f"{_YELLOW}  {'EXTRA':<9}{_RST}"
-_ERROR = f"{_RED}  {'ERROR':<9}{_RST}"
+_SKIP = f"{DIM}  {'--':<9}{RST}"
+_SET = f"{GREEN}  {'SET':<9}{RST}"
+_CLEAR = f"{YELLOW}  {'CLEAR':<9}{RST}"
+_REORDER = f"{CYAN}  {'REORDER':<9}{RST}"
+_SCRAMBLE = f"{MAGENTA}  {'SCRAMBLE':<9}{RST}"
+_MISSING = f"{YELLOW}  {'MISSING':<9}{RST}"
+_EXTRA = f"{YELLOW}  {'EXTRA':<9}{RST}"
+_ERROR = f"{RED}  {'ERROR':<9}{RST}"
 
 XATTR_KEY = "com.apple.metadata:_kMDItemUserTags"
 
@@ -161,12 +152,12 @@ def fix_order(directory):
         try:
             tags = get_tags(filepath)
             if not tags:
-                print(f"{_SKIP}{rel}  {_DIM}(no tags){_RST}")
+                print(f"{_SKIP}{rel}  {DIM}(no tags){RST}")
                 skipped += 1
                 continue
             ordered = sort_tags(tags)
             if tags == ordered:
-                print(f"{_SKIP}{rel}  {_DIM}[{', '.join(tags)}]{_RST}")
+                print(f"{_SKIP}{rel}  {DIM}[{', '.join(tags)}]{RST}")
                 skipped += 1
             else:
                 remove_all_tags(filepath)
@@ -178,7 +169,7 @@ def fix_order(directory):
             errors += 1
 
     total = fixed + skipped + errors
-    print(f"\n{_BOLD}{total} files:{_RST} {_CYAN}{fixed} reordered{_RST}, {_DIM}{skipped} skipped{_RST}, {_RED}{errors} errors{_RST}")
+    print(f"\n{BOLD}{total} files:{RST} {CYAN}{fixed} reordered{RST}, {DIM}{skipped} skipped{RST}, {RED}{errors} errors{RST}")
     return 1 if errors else 0
 
 
@@ -210,7 +201,7 @@ def reset(directory):
             errors += 1
 
     total = cleared + skipped + errors
-    print(f"\n{_BOLD}{total} files:{_RST} {_YELLOW}{cleared} cleared{_RST}, {_DIM}{skipped} skipped{_RST}, {_RED}{errors} errors{_RST}")
+    print(f"\n{BOLD}{total} files:{RST} {YELLOW}{cleared} cleared{RST}, {DIM}{skipped} skipped{RST}, {RED}{errors} errors{RST}")
     return 1 if errors else 0
 
 
@@ -257,7 +248,7 @@ def sync(source_dir, dest_dir):
                 cleared += 1
             elif src_tags == dst_tags:
                 set_tags(dst_path, src_tags)
-                print(f"{_SKIP}{rel}  {_DIM}[{', '.join(src_tags)}]{_RST}")
+                print(f"{_SKIP}{rel}  {DIM}[{', '.join(src_tags)}]{RST}")
                 skipped += 1
             else:
                 set_tags(dst_path, src_tags)
@@ -270,14 +261,14 @@ def sync(source_dir, dest_dir):
             errors += 1
 
     total = skipped + updated + cleared + missing + errors
-    print(f"\n{_BOLD}{total} files:{_RST} {_GREEN}{updated} set{_RST}, {_YELLOW}{cleared} cleared{_RST}, {_DIM}{skipped} skipped{_RST}, {_YELLOW}{missing} missing{_RST}, {_RED}{errors} errors{_RST}")
+    print(f"\n{BOLD}{total} files:{RST} {GREEN}{updated} set{RST}, {YELLOW}{cleared} cleared{RST}, {DIM}{skipped} skipped{RST}, {YELLOW}{missing} missing{RST}, {RED}{errors} errors{RST}")
 
     # Warn about files in dest that don't exist in source
     dest_files = set(collect_files(dest_dir))
     src_files = set(files)
     extra = sorted(dest_files - src_files)
     if extra:
-        print(f"\n{_YELLOW}{_BOLD}WARNING:{_RST} {len(extra)} files in dest not in source:")
+        print(f"\n{YELLOW}{BOLD}WARNING:{RST} {len(extra)} files in dest not in source:")
         for rel in extra:
             print(f"{_EXTRA}{rel}")
 
@@ -301,7 +292,7 @@ def scramble(directory):
         try:
             tags = get_tags(filepath)
             if len(tags) < 2:
-                print(f"{_SKIP}{rel}  {_DIM}{tags if tags else '(no tags)'}{_RST}")
+                print(f"{_SKIP}{rel}  {DIM}{tags if tags else '(no tags)'}{RST}")
                 skipped += 1
                 continue
             shuffled = tags[:]
@@ -316,33 +307,30 @@ def scramble(directory):
             errors += 1
 
     total = scrambled + skipped + errors
-    print(f"\n{_BOLD}{total} files:{_RST} {_MAGENTA}{scrambled} scrambled{_RST}, {_DIM}{skipped} skipped{_RST}, {_RED}{errors} errors{_RST}")
+    print(f"\n{BOLD}{total} files:{RST} {MAGENTA}{scrambled} scrambled{RST}, {DIM}{skipped} skipped{RST}, {RED}{errors} errors{RST}")
     return 1 if errors else 0
 
 
 def main():
     parser = argparse.ArgumentParser(description="Sync macOS Finder tags between directories.")
-    parser.add_argument("source", help="Source directory (tags are read from here)")
-    parser.add_argument("dest", nargs="?", help="Destination directory (tags are written here)")
+    parser.add_argument("source", nargs="?", default=None, help="Source directory (tags are read from here)")
+    parser.add_argument("dest", nargs="?", default=None, help="Destination directory (tags are written here)")
     parser.add_argument("--sync-dest", action="store_true", help="Sync tags from source to dest (exact match, preserving order)")
     parser.add_argument("--fix-src", action="store_true", help="Reorder source tags to preferred order and exit")
     parser.add_argument("--scramble-test-src", action="store_true", help="Randomly shuffle source tag order for testing")
     args = parser.parse_args()
 
     if args.scramble_test_src:
-        sys.exit(scramble(args.source))
+        source = args.source or choose_folder("Select directory to SCRAMBLE tags")
+        sys.exit(scramble(source))
     elif args.fix_src:
-        sys.exit(fix_order(args.source))
-    elif args.sync_dest:
-        if not args.dest:
-            print(f"{_ERROR}--sync-dest requires a dest directory")
-            sys.exit(1)
-        sys.exit(sync(args.source, args.dest))
+        source = args.source or choose_folder("Select directory to FIX tag order")
+        sys.exit(fix_order(source))
     else:
-        if not args.dest:
-            print(f"{_ERROR}dest directory is required for sync")
-            sys.exit(1)
-        sys.exit(sync(args.source, args.dest))
+        source, dest = prompt_dirs(args.source, args.dest,
+                                   "Select SOURCE directory (tags read from here)",
+                                   "Select DESTINATION directory (tags written here)")
+        sys.exit(sync(source, dest))
 
 
 if __name__ == "__main__":
