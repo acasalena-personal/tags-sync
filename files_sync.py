@@ -111,20 +111,6 @@ def compare(source_dir, dest_dir, type_check):
                 else:
                     print(f"{_DIFF}{rel}  {src_val[:12]}... != {dst_val[:12]}...")
                     differed += 1
-            elif type_check == "DATE":
-                src_val = file_mtime(src_path)
-                dst_val = file_mtime(dst_path)
-                src_dt = fmt_date(src_val)
-                dst_dt = fmt_date(dst_val)
-                if src_val == dst_val:
-                    print(f"{_MATCH}{rel}  {_DIM}{src_dt}{_RST}")
-                    matched += 1
-                elif src_val > dst_val:
-                    print(f"{_DIFF}{rel}  src newer ({src_dt} > {dst_dt})")
-                    differed += 1
-                else:
-                    print(f"{_DIFF}{rel}  dest newer ({dst_dt} > {src_dt})")
-                    differed += 1
             else:  # DATESIZE
                 src_mt = file_mtime(src_path)
                 dst_mt = file_mtime(dst_path)
@@ -182,9 +168,9 @@ def main():
     parser.add_argument("dest", help="Destination directory")
     parser.add_argument(
         "--type-check",
-        choices=["HASH", "DATE", "DATESIZE"],
-        default="DATE",
-        help="Comparison method: HASH (SHA-256), DATE (modification time), or DATESIZE (date + file size)",
+        choices=["HASH", "DATESIZE"],
+        default="DATESIZE",
+        help="Comparison method: HASH (SHA-256) or DATESIZE (date + file size)",
     )
     args = parser.parse_args()
 
