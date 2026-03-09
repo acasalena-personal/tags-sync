@@ -5,6 +5,7 @@ import argparse
 from datetime import datetime
 import hashlib
 import os
+import subprocess
 import sys
 
 # ANSI colors
@@ -213,12 +214,26 @@ def compare(source_dir, dest_dir, type_check):
     return 1 if (errors or differed) else 0
 
 
+def choose_folder(prompt):
+    """Open a macOS folder chooser dialog and return the selected path."""
+    script = f'POSIX path of (choose folder with prompt "{prompt}")'
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        print(f"{_ERROR}No folder selected. Exiting.")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Compare files between source and destination directories."
     )
-    parser.add_argument("source", help="Source directory")
-    parser.add_argument("dest", help="Destination directory")
+    parser.add_argument("source", nargs="?", default=None, help="Source directory")
+    parser.add_argument("dest", nargs="?", default=None, help="Destination directory")
     parser.add_argument(
         "--type-check",
         type=str.upper,
@@ -228,7 +243,10 @@ def main():
     )
     args = parser.parse_args()
 
-    sys.exit(compare(args.source, args.dest, args.type_check))
+    source = args.source or choose_folder("Select SOURCE directory")
+    dest = args.dest or choose_folder("Select DESTINATION directory")
+
+    sys.exit(compare(source, dest, args.type_check))
 
 
 if __name__ == "__main__":
