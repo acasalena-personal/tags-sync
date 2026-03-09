@@ -2,6 +2,7 @@
 """Compare files between a source and destination directory by hash or modification date."""
 
 import argparse
+from datetime import datetime
 import hashlib
 import os
 import sys
@@ -29,7 +30,7 @@ def collect_files(directory):
     paths = []
     for root, _, files in os.walk(directory):
         for name in files:
-            if name == ".DS_Store":
+            if name.startswith("."):
                 continue
             full = os.path.join(root, name)
             rel = os.path.relpath(full, directory)
@@ -50,6 +51,27 @@ def file_hash(filepath):
 def file_mtime(filepath):
     """Return the modification time of a file."""
     return os.path.getmtime(filepath)
+
+
+def fmt_size(size):
+    """Format bytes as human-readable size (e.g. 1.2KB, 3.4MB)."""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(size) < 1024:
+            if unit == "B":
+                return f"{size}{unit}"
+            return f"{size:.1f}{unit}"
+        size /= 1024
+    return f"{size:.1f}PB"
+
+
+def fmt_date(ts):
+    """Format a timestamp as 'Dec 23rd, 2025 at 3:45pm'."""
+    dt = datetime.fromtimestamp(ts)
+    month = dt.strftime("%b")
+    day = dt.day
+    year = dt.year
+    time = dt.strftime("%-I:%M%p").lower()
+    return f"{month} {day}, {year} at {time}"
 
 
 def compare(source_dir, dest_dir, type_check):
@@ -89,17 +111,42 @@ def compare(source_dir, dest_dir, type_check):
                 else:
                     print(f"{_DIFF}{rel}  {src_val[:12]}... != {dst_val[:12]}...")
                     differed += 1
-            else:  # DATE
+            elif type_check == "DATE":
                 src_val = file_mtime(src_path)
                 dst_val = file_mtime(dst_path)
+                src_dt = fmt_date(src_val)
+                dst_dt = fmt_date(dst_val)
                 if src_val == dst_val:
-                    print(f"{_MATCH}{rel}  {_DIM}{src_val}{_RST}")
+                    print(f"{_MATCH}{rel}  {_DIM}{src_dt}{_RST}")
                     matched += 1
                 elif src_val > dst_val:
-                    print(f"{_DIFF}{rel}  src newer ({src_val} > {dst_val})")
+                    print(f"{_DIFF}{rel}  src newer ({src_dt} > {dst_dt})")
                     differed += 1
                 else:
-                    print(f"{_DIFF}{rel}  dest newer ({dst_val} > {src_val})")
+                    print(f"{_DIFF}{rel}  dest newer ({dst_dt} > {src_dt})")
+                    differed += 1
+            else:  # DATESIZE
+                src_mt = file_mtime(src_path)
+                dst_mt = file_mtime(dst_path)
+                src_sz = os.path.getsize(src_path)
+                dst_sz = os.path.getsize(dst_path)
+                src_dt = fmt_date(src_mt)
+                dst_dt = fmt_date(dst_mt)
+                date_match = src_mt == dst_mt
+                size_match = src_sz == dst_sz
+                if date_match and size_match:
+                    print(f"{_MATCH}{rel}  {_DIM}{src_dt} - {fmt_size(src_sz)}{_RST}")
+                    matched += 1
+                else:
+                    reasons = []
+                    if not date_match:
+                        if src_mt > dst_mt:
+                            reasons.append(f"src newer ({src_dt} > {dst_dt})")
+                        else:
+                            reasons.append(f"dest newer ({dst_dt} > {src_dt})")
+                    if not size_match:
+                        reasons.append(f"size {fmt_size(src_sz)} != {fmt_size(dst_sz)}")
+                    print(f"{_DIFF}{rel}  {', '.join(reasons)}")
                     differed += 1
         except Exception as e:
             print(f"{_ERROR}{rel}  {e}")
@@ -135,9 +182,9 @@ def main():
     parser.add_argument("dest", help="Destination directory")
     parser.add_argument(
         "--type-check",
-        choices=["HASH", "DATE"],
+        choices=["HASH", "DATE", "DATESIZE"],
         default="DATE",
-        help="Comparison method: HASH (SHA-256) or DATE (modification time)",
+        help="Comparison method: HASH (SHA-256), DATE (modification time), or DATESIZE (date + file size)",
     )
     args = parser.parse_args()
 
